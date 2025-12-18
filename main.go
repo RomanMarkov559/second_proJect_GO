@@ -94,9 +94,9 @@ func (v *Validator) validateTopLevel(node *yaml.Node) {
 func (v *Validator) validateMetadata(node *yaml.Node) {
 	nameNode := v.getField(node, "name")
 	if nameNode == nil {
-		v.addError(node.Line, "name is required")  // ИЗМЕНЕНИЕ: без "metadata."
+		v.addError(node.Line, "name is required")
 	} else if nameNode.Value == "" {
-		v.addError(nameNode.Line, "name is required")  // ИЗМЕНЕНИЕ: без "metadata."
+		v.addError(nameNode.Line, "name is required")
 	}
 }
 
@@ -144,12 +144,12 @@ func (v *Validator) validateContainers(node *yaml.Node) {
 }
 
 func (v *Validator) validateContainer(node *yaml.Node, index int) {
-	// Проверка имени
+	// ИСПРАВЛЕНИЕ: Упрощенный формат для пустого имени
 	nameNode := v.getField(node, "name")
 	if nameNode == nil {
-		v.addError(node.Line, "spec.containers[%d].name is required", index)
+		v.addError(node.Line, "name is required")  // ПРОСТОЙ ФОРМАТ
 	} else if nameNode.Value == "" {
-		v.addError(nameNode.Line, "spec.containers[%d].name is required", index)
+		v.addError(nameNode.Line, "name is required")  // ПРОСТОЙ ФОРМАТ
 	} else if !v.nameRegex.MatchString(nameNode.Value) {
 		v.addError(nameNode.Line, "spec.containers[%d].name has invalid format '%s'", index, nameNode.Value)
 	}
@@ -207,7 +207,6 @@ func (v *Validator) validateContainerPort(node *yaml.Node, containerIndex, portI
 		if err != nil {
 			v.addError(portNode.Line, "spec.containers[%d].ports[%d].containerPort must be int", containerIndex, portIndex)
 		} else if port <= 0 || port >= 65536 {
-			// ИЗМЕНЕНИЕ: простой формат "containerPort value out of range"
 			v.addError(portNode.Line, "containerPort value out of range")
 		}
 	}
@@ -246,7 +245,6 @@ func (v *Validator) validateHTTPGetAction(node *yaml.Node, containerIndex int, p
 		if err != nil {
 			v.addError(portNode.Line, "spec.containers[%d].%s.httpGet.port must be int", containerIndex, probeType)
 		} else if port <= 0 || port >= 65536 {
-			// ИЗМЕНЕНИЕ: простой формат "port value out of range"
 			v.addError(portNode.Line, "port value out of range")
 		}
 	}
@@ -267,45 +265,39 @@ func (v *Validator) validateResources(node *yaml.Node, containerIndex int) {
 }
 
 func (v *Validator) validateResourceMap(node *yaml.Node, containerIndex int, mapType string) {
-    if node.Kind != yaml.MappingNode {
-        v.addError(node.Line, "spec.containers[%d].resources.%s must be an object", containerIndex, mapType)
-        return
-    }
+	if node.Kind != yaml.MappingNode {
+		v.addError(node.Line, "spec.containers[%d].resources.%s must be an object", containerIndex, mapType)
+		return
+	}
 
-    for i := 0; i < len(node.Content); i += 2 {
-        keyNode := node.Content[i]
-        valueNode := node.Content[i+1]
+	for i := 0; i < len(node.Content); i += 2 {
+		keyNode := node.Content[i]
+		valueNode := node.Content[i+1]
 
-        switch keyNode.Value {
-        case "cpu":
-            if valueNode.Kind != yaml.ScalarNode {
-                v.addError(valueNode.Line, "spec.containers[%d].resources.%s.cpu must be int", containerIndex, mapType)
-            } else {
-                // Ключевое исправление: проверяем что это именно int, а не строка
-                // В YAML: cpu: 2 (tag="!!int") - валидно
-                //         cpu: "2" (tag="!!str") - невалидно
-                if valueNode.Tag != "!!int" {
-                    v.addError(valueNode.Line, "spec.containers[%d].resources.%s.cpu must be int", containerIndex, mapType)
-                } else {
-                    // Если tag правильный, проверяем что это действительно число
-                    cpu, err := strconv.Atoi(valueNode.Value)
-                    if err != nil {
-                        v.addError(valueNode.Line, "spec.containers[%d].resources.%s.cpu must be int", containerIndex, mapType)
-                    } else if cpu <= 0 {
-                        v.addError(valueNode.Line, "spec.containers[%d].resources.%s.cpu value out of range", containerIndex, mapType)
-                    }
-                }
-            }
-        case "memory":
-            if valueNode.Kind != yaml.ScalarNode {
-                v.addError(valueNode.Line, "spec.containers[%d].resources.%s.memory must be string", containerIndex, mapType)
-            } else if !v.memoryRegex.MatchString(valueNode.Value) {
-                v.addError(valueNode.Line, "spec.containers[%d].resources.%s.memory has invalid format '%s'", containerIndex, mapType, valueNode.Value)
-            }
-        default:
-            v.addError(keyNode.Line, "spec.containers[%d].resources.%s.%s has unsupported resource type", containerIndex, mapType, keyNode.Value)
-        }
-    }
+		switch keyNode.Value {
+		case "cpu":
+			if valueNode.Kind != yaml.ScalarNode {
+				v.addError(valueNode.Line, "spec.containers[%d].resources.%s.cpu must be int", containerIndex, mapType)
+			} else if valueNode.Tag != "!!int" {
+				v.addError(valueNode.Line, "spec.containers[%d].resources.%s.cpu must be int", containerIndex, mapType)
+			} else {
+				cpu, err := strconv.Atoi(valueNode.Value)
+				if err != nil {
+					v.addError(valueNode.Line, "spec.containers[%d].resources.%s.cpu must be int", containerIndex, mapType)
+				} else if cpu <= 0 {
+					v.addError(valueNode.Line, "spec.containers[%d].resources.%s.cpu value out of range", containerIndex, mapType)
+				}
+			}
+		case "memory":
+			if valueNode.Kind != yaml.ScalarNode {
+				v.addError(valueNode.Line, "spec.containers[%d].resources.%s.memory must be string", containerIndex, mapType)
+			} else if !v.memoryRegex.MatchString(valueNode.Value) {
+				v.addError(valueNode.Line, "spec.containers[%d].resources.%s.memory has invalid format '%s'", containerIndex, mapType, valueNode.Value)
+			}
+		default:
+			v.addError(keyNode.Line, "spec.containers[%d].resources.%s.%s has unsupported resource type", containerIndex, mapType, keyNode.Value)
+		}
+	}
 }
 
 func (v *Validator) getField(node *yaml.Node, fieldName string) *yaml.Node {
