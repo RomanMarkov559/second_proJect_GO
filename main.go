@@ -96,13 +96,14 @@ func (v *Validator) validateTopLevel(node *yaml.Node) {
 }
 
 func (v *Validator) validateMetadata(node *yaml.Node) {
-    // ✅ ИСПРАВЛЕНО: убрана проверка Value == ""
     nameNode := v.getField(node, "name")
     if nameNode == nil {
         v.addError(node.Line, "metadata.name is required")
+    } else if nameNode.Value == "" {
+        v.addError(nameNode.Line, "metadata.name is required")
     }
-    // namespace и labels не обязательны
 }
+
 
 func (v *Validator) validateSpec(node *yaml.Node) {
     osNode := v.getField(node, "os")
