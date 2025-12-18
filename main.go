@@ -105,7 +105,7 @@ func (v *Validator) validateSpec(node *yaml.Node) {
     osNode := v.getField(node, "os")
     if osNode != nil {
         if osNode.Kind != yaml.MappingNode {
-            v.addError(osNode.Line, "spec.os has unsupported value '%s'", osNode.Value)
+            v.addError(osNode.Line+1, "spec.os has unsupported value '%s'", osNode.Value)
         } else {
             v.validateOS(osNode)
         }
