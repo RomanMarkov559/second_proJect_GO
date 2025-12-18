@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -37,7 +38,7 @@ func main() {
 	
 	if len(errors) > 0 {
 		for _, err := range errors {
-			fmt.Println(err)  // В stdout!
+			fmt.Println(err)
 		}
 		os.Exit(1)
 	}
@@ -53,7 +54,7 @@ func validateYAML(filename string, root *yaml.Node) []string {
 
 	doc := root.Content[0]
 	if doc.Kind != yaml.MappingNode {
-		errors = append(errors, fmt.Sprintf("%s:%d root must be a mapping", filename, doc.Line))
+		errors = append(errors, fmt.Sprintf("%s:%d root must be a mapping", getBaseFilename(filename), doc.Line))
 		return errors
 	}
 
@@ -79,7 +80,7 @@ func validateTopLevel(filename string, node *yaml.Node, errors []string) []strin
 		errors = append(errors, "apiVersion is required")
 	} else if apiVersion.Value != "v1" {
 		errors = append(errors, fmt.Sprintf("%s:%d apiVersion has unsupported value '%s'", 
-			filename, apiVersion.Line, apiVersion.Value))
+			getBaseFilename(filename), apiVersion.Line, apiVersion.Value))
 	}
 
 	// 2. Проверка kind
@@ -87,7 +88,7 @@ func validateTopLevel(filename string, node *yaml.Node, errors []string) []strin
 		errors = append(errors, "kind is required")
 	} else if kind.Value != "Pod" {
 		errors = append(errors, fmt.Sprintf("%s:%d kind has unsupported value '%s'", 
-			filename, kind.Line, kind.Value))
+			getBaseFilename(filename), kind.Line, kind.Value))
 	}
 
 	// 3. Проверка metadata
@@ -109,7 +110,7 @@ func validateTopLevel(filename string, node *yaml.Node, errors []string) []strin
 
 func validateMetadata(filename string, node *yaml.Node, errors []string) []string {
 	if node.Kind != yaml.MappingNode {
-		errors = append(errors, fmt.Sprintf("%s:%d metadata must be a mapping", filename, node.Line))
+		errors = append(errors, fmt.Sprintf("%s:%d metadata must be a mapping", getBaseFilename(filename), node.Line))
 		return errors
 	}
 
@@ -128,7 +129,7 @@ func validateMetadata(filename string, node *yaml.Node, errors []string) []strin
 		if name != nil {
 			line = name.Line
 		}
-		errors = append(errors, fmt.Sprintf("%s:%d name is required", filename, line))
+		errors = append(errors, fmt.Sprintf("%s:%d name is required", getBaseFilename(filename), line))
 	}
 
 	return errors
@@ -136,7 +137,7 @@ func validateMetadata(filename string, node *yaml.Node, errors []string) []strin
 
 func validateSpec(filename string, node *yaml.Node, errors []string) []string {
 	if node.Kind != yaml.MappingNode {
-		errors = append(errors, fmt.Sprintf("%s:%d spec must be a mapping", filename, node.Line))
+		errors = append(errors, fmt.Sprintf("%s:%d spec must be a mapping", getBaseFilename(filename), node.Line))
 		return errors
 	}
 
@@ -154,7 +155,7 @@ func validateSpec(filename string, node *yaml.Node, errors []string) []string {
 	if osNode, ok := fields["os"]; ok {
 		if osNode.Value != "linux" && osNode.Value != "windows" {
 			errors = append(errors, fmt.Sprintf("%s:%d os has unsupported value '%s'", 
-				filename, osNode.Line, osNode.Value))
+				getBaseFilename(filename), osNode.Line, osNode.Value))
 		}
 	}
 
@@ -162,17 +163,17 @@ func validateSpec(filename string, node *yaml.Node, errors []string) []string {
 	containers, ok := fields["containers"]
 	if !ok {
 		line := getKeyLine(node, "containers")
-		errors = append(errors, fmt.Sprintf("%s:%d containers is required", filename, line))
+		errors = append(errors, fmt.Sprintf("%s:%d containers is required", getBaseFilename(filename), line))
 		return errors
 	}
 
 	if containers.Kind != yaml.SequenceNode {
-		errors = append(errors, fmt.Sprintf("%s:%d containers must be a list", filename, containers.Line))
+		errors = append(errors, fmt.Sprintf("%s:%d containers must be a list", getBaseFilename(filename), containers.Line))
 		return errors
 	}
 
 	if len(containers.Content) == 0 {
-		errors = append(errors, fmt.Sprintf("%s:%d containers is required", filename, containers.Line))
+		errors = append(errors, fmt.Sprintf("%s:%d containers is required", getBaseFilename(filename), containers.Line))
 		return errors
 	}
 
@@ -187,7 +188,7 @@ func validateSpec(filename string, node *yaml.Node, errors []string) []string {
 
 func validateContainer(filename string, node *yaml.Node, index int, containerNames map[string]bool, errors []string) []string {
 	if node.Kind != yaml.MappingNode {
-		errors = append(errors, fmt.Sprintf("%s:%d container must be a mapping", filename, node.Line))
+		errors = append(errors, fmt.Sprintf("%s:%d container must be a mapping", getBaseFilename(filename), node.Line))
 		return errors
 	}
 
@@ -205,19 +206,19 @@ func validateContainer(filename string, node *yaml.Node, index int, containerNam
 	name, ok := fields["name"]
 	if !ok || name.Value == "" {
 		line := getKeyLine(node, "name")
-		errors = append(errors, fmt.Sprintf("%s:%d container name is required", filename, line))
+		errors = append(errors, fmt.Sprintf("%s:%d name is required", getBaseFilename(filename), line))
 	} else {
 		// Проверка формата snake_case
 		matched, _ := regexp.MatchString(`^[a-z]+(_[a-z]+)*$`, name.Value)
 		if !matched {
 			errors = append(errors, fmt.Sprintf("%s:%d name has invalid format '%s'", 
-				filename, name.Line, name.Value))
+				getBaseFilename(filename), name.Line, name.Value))
 		}
 		
 		// Проверка уникальности
 		if containerNames[name.Value] {
 			errors = append(errors, fmt.Sprintf("%s:%d container name '%s' must be unique", 
-				filename, name.Line, name.Value))
+				getBaseFilename(filename), name.Line, name.Value))
 		}
 		containerNames[name.Value] = true
 	}
@@ -226,18 +227,18 @@ func validateContainer(filename string, node *yaml.Node, index int, containerNam
 	image, ok := fields["image"]
 	if !ok || image.Value == "" {
 		line := getKeyLine(node, "image")
-		errors = append(errors, fmt.Sprintf("%s:%d image is required", filename, line))
+		errors = append(errors, fmt.Sprintf("%s:%d image is required", getBaseFilename(filename), line))
 	} else {
 		// Проверка формата
 		if !strings.HasPrefix(image.Value, "registry.bigbrother.io/") {
 			errors = append(errors, fmt.Sprintf("%s:%d image has invalid format '%s'", 
-				filename, image.Line, image.Value))
+				getBaseFilename(filename), image.Line, image.Value))
 		} else {
 			// Проверка наличия тега
 			parts := strings.Split(image.Value, ":")
 			if len(parts) != 2 || parts[1] == "" {
 				errors = append(errors, fmt.Sprintf("%s:%d image has invalid format '%s'", 
-					filename, image.Line, image.Value))
+					getBaseFilename(filename), image.Line, image.Value))
 			}
 		}
 	}
@@ -265,7 +266,7 @@ func validateContainer(filename string, node *yaml.Node, index int, containerNam
 	resources, ok := fields["resources"]
 	if !ok {
 		line := getKeyLine(node, "resources")
-		errors = append(errors, fmt.Sprintf("%s:%d resources is required", filename, line))
+		errors = append(errors, fmt.Sprintf("%s:%d resources is required", getBaseFilename(filename), line))
 	} else {
 		errors = validateResources(filename, resources, errors)
 	}
@@ -275,7 +276,7 @@ func validateContainer(filename string, node *yaml.Node, index int, containerNam
 
 func validatePort(filename string, node *yaml.Node, index int, errors []string) []string {
 	if node.Kind != yaml.MappingNode {
-		errors = append(errors, fmt.Sprintf("%s:%d port must be a mapping", filename, node.Line))
+		errors = append(errors, fmt.Sprintf("%s:%d port must be a mapping", getBaseFilename(filename), node.Line))
 		return errors
 	}
 
@@ -293,17 +294,17 @@ func validatePort(filename string, node *yaml.Node, index int, errors []string) 
 	port, ok := fields["containerPort"]
 	if !ok {
 		line := getKeyLine(node, "containerPort")
-		errors = append(errors, fmt.Sprintf("%s:%d containerPort is required", filename, line))
+		errors = append(errors, fmt.Sprintf("%s:%d containerPort is required", getBaseFilename(filename), line))
 	} else {
 		// Проверяем что это число
 		if port.Kind != yaml.ScalarNode {
-			errors = append(errors, fmt.Sprintf("%s:%d containerPort must be int", filename, port.Line))
+			errors = append(errors, fmt.Sprintf("%s:%d containerPort must be int", getBaseFilename(filename), port.Line))
 		} else {
 			portValue, err := strconv.Atoi(port.Value)
 			if err != nil {
-				errors = append(errors, fmt.Sprintf("%s:%d containerPort must be int", filename, port.Line))
+				errors = append(errors, fmt.Sprintf("%s:%d containerPort must be int", getBaseFilename(filename), port.Line))
 			} else if portValue <= 0 || portValue >= 65536 {
-				errors = append(errors, fmt.Sprintf("%s:%d containerPort value out of range", filename, port.Line))
+				errors = append(errors, fmt.Sprintf("%s:%d containerPort value out of range", getBaseFilename(filename), port.Line))
 			}
 		}
 	}
@@ -312,7 +313,7 @@ func validatePort(filename string, node *yaml.Node, index int, errors []string) 
 	if protocol, ok := fields["protocol"]; ok {
 		if protocol.Value != "TCP" && protocol.Value != "UDP" {
 			errors = append(errors, fmt.Sprintf("%s:%d protocol has unsupported value '%s'", 
-				filename, protocol.Line, protocol.Value))
+				getBaseFilename(filename), protocol.Line, protocol.Value))
 		}
 	}
 
@@ -321,7 +322,7 @@ func validatePort(filename string, node *yaml.Node, index int, errors []string) 
 
 func validateProbe(filename string, node *yaml.Node, probeType string, errors []string) []string {
 	if node.Kind != yaml.MappingNode {
-		errors = append(errors, fmt.Sprintf("%s:%d %s must be a mapping", filename, node.Line, probeType))
+		errors = append(errors, fmt.Sprintf("%s:%d %s must be a mapping", getBaseFilename(filename), node.Line, probeType))
 		return errors
 	}
 
@@ -339,7 +340,7 @@ func validateProbe(filename string, node *yaml.Node, probeType string, errors []
 	httpGet, ok := fields["httpGet"]
 	if !ok {
 		line := getKeyLine(node, "httpGet")
-		errors = append(errors, fmt.Sprintf("%s:%d httpGet is required", filename, line))
+		errors = append(errors, fmt.Sprintf("%s:%d httpGet is required", getBaseFilename(filename), line))
 		return errors
 	}
 
@@ -350,7 +351,7 @@ func validateProbe(filename string, node *yaml.Node, probeType string, errors []
 
 func validateHTTPGet(filename string, node *yaml.Node, errors []string) []string {
 	if node.Kind != yaml.MappingNode {
-		errors = append(errors, fmt.Sprintf("%s:%d httpGet must be a mapping", filename, node.Line))
+		errors = append(errors, fmt.Sprintf("%s:%d httpGet must be a mapping", getBaseFilename(filename), node.Line))
 		return errors
 	}
 
@@ -368,26 +369,26 @@ func validateHTTPGet(filename string, node *yaml.Node, errors []string) []string
 	path, ok := fields["path"]
 	if !ok || path.Value == "" {
 		line := getKeyLine(node, "path")
-		errors = append(errors, fmt.Sprintf("%s:%d path is required", filename, line))
+		errors = append(errors, fmt.Sprintf("%s:%d path is required", getBaseFilename(filename), line))
 	} else if !strings.HasPrefix(path.Value, "/") {
-		errors = append(errors, fmt.Sprintf("%s:%d path must be absolute", filename, path.Line))
+		errors = append(errors, fmt.Sprintf("%s:%d path must be absolute", getBaseFilename(filename), path.Line))
 	}
 
 	// Проверка port
 	port, ok := fields["port"]
 	if !ok {
 		line := getKeyLine(node, "port")
-		errors = append(errors, fmt.Sprintf("%s:%d port is required", filename, line))
+		errors = append(errors, fmt.Sprintf("%s:%d port is required", getBaseFilename(filename), line))
 	} else {
 		// Проверяем что это число
 		if port.Kind != yaml.ScalarNode {
-			errors = append(errors, fmt.Sprintf("%s:%d port must be int", filename, port.Line))
+			errors = append(errors, fmt.Sprintf("%s:%d port must be int", getBaseFilename(filename), port.Line))
 		} else {
 			portValue, err := strconv.Atoi(port.Value)
 			if err != nil {
-				errors = append(errors, fmt.Sprintf("%s:%d port must be int", filename, port.Line))
+				errors = append(errors, fmt.Sprintf("%s:%d port must be int", getBaseFilename(filename), port.Line))
 			} else if portValue <= 0 || portValue >= 65536 {
-				errors = append(errors, fmt.Sprintf("%s:%d port value out of range", filename, port.Line))
+				errors = append(errors, fmt.Sprintf("%s:%d port value out of range", getBaseFilename(filename), port.Line))
 			}
 		}
 	}
@@ -397,7 +398,7 @@ func validateHTTPGet(filename string, node *yaml.Node, errors []string) []string
 
 func validateResources(filename string, node *yaml.Node, errors []string) []string {
 	if node.Kind != yaml.MappingNode {
-		errors = append(errors, fmt.Sprintf("%s:%d resources must be a mapping", filename, node.Line))
+		errors = append(errors, fmt.Sprintf("%s:%d resources must be a mapping", getBaseFilename(filename), node.Line))
 		return errors
 	}
 
@@ -426,7 +427,7 @@ func validateResources(filename string, node *yaml.Node, errors []string) []stri
 
 func validateResourceList(filename string, node *yaml.Node, resourceType string, errors []string) []string {
 	if node.Kind != yaml.MappingNode {
-		errors = append(errors, fmt.Sprintf("%s:%d %s must be a mapping", filename, node.Line, resourceType))
+		errors = append(errors, fmt.Sprintf("%s:%d %s must be a mapping", getBaseFilename(filename), node.Line, resourceType))
 		return errors
 	}
 
@@ -444,7 +445,7 @@ func validateResourceList(filename string, node *yaml.Node, resourceType string,
 	if cpu, ok := fields["cpu"]; ok {
 		_, err := strconv.Atoi(cpu.Value)
 		if err != nil {
-			errors = append(errors, fmt.Sprintf("%s:%d cpu must be int", filename, cpu.Line))
+			errors = append(errors, fmt.Sprintf("%s:%d cpu must be int", getBaseFilename(filename), cpu.Line))
 		}
 	}
 
@@ -453,7 +454,7 @@ func validateResourceList(filename string, node *yaml.Node, resourceType string,
 		matched, _ := regexp.MatchString(`^[0-9]+(Gi|Mi|Ki)$`, memory.Value)
 		if !matched {
 			errors = append(errors, fmt.Sprintf("%s:%d memory has invalid format '%s'", 
-				filename, memory.Line, memory.Value))
+				getBaseFilename(filename), memory.Line, memory.Value))
 		}
 	}
 
@@ -471,4 +472,9 @@ func getKeyLine(node *yaml.Node, key string) int {
 		}
 	}
 	return node.Line
+}
+
+// Получаем только имя файла без пути
+func getBaseFilename(filename string) string {
+	return filepath.Base(filename)
 }
