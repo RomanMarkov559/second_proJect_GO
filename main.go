@@ -101,14 +101,14 @@ func (v *Validator) validateMetadata(node *yaml.Node) {
 }
 
 func (v *Validator) validateSpec(node *yaml.Node) {
-    // ✅ ИСПРАВЛЕНО: проверяем любой os, не только MappingNode
+    // ✅ ФИКС #1: Проверяем ЛЮБОЙ os!
     osNode := v.getField(node, "os")
     if osNode != nil {
         if osNode.Kind != yaml.MappingNode {
-            v.addError(osNode.Line, "spec.os must be object")
-            return
+            v.addError(osNode.Line, "spec.os has unsupported value '%s'", osNode.Value)
+        } else {
+            v.validateOS(osNode)
         }
-        v.validateOS(osNode)
     }
 
     // Проверяем обязательные containers
@@ -142,11 +142,11 @@ func (v *Validator) validateContainers(node *yaml.Node) {
 }
 
 func (v *Validator) validateContainer(node *yaml.Node, index int) {
-    // ✅ ИСПРАВЛЕНО: убрана проверка Value == "" для name
+    // ✅ ФИКС #2: Пустое имя = invalid format!
     nameNode := v.getField(node, "name")
     if nameNode == nil {
         v.addError(node.Line, "spec.containers[%d].name is required", index)
-    } else if !v.nameRegex.MatchString(nameNode.Value) {
+    } else if nameNode.Value == "" || !v.nameRegex.MatchString(nameNode.Value) {
         v.addError(nameNode.Line, "spec.containers[%d].name has invalid format '%s'", index, nameNode.Value)
     }
 
@@ -196,8 +196,6 @@ func (v *Validator) validateContainerPort(node *yaml.Node, containerIndex, portI
     portNode := v.getField(node, "containerPort")
     if portNode == nil {
         v.addError(node.Line, "spec.containers[%d].ports[%d].containerPort is required", containerIndex, portIndex)
-    } else if portNode.Value == "" {
-        v.addError(portNode.Line, "spec.containers[%d].ports[%d].containerPort must be int", containerIndex, portIndex)
     } else {
         port, err := strconv.Atoi(portNode.Value)
         if err != nil {
@@ -276,11 +274,11 @@ func (v *Validator) validateResourceMap(node *yaml.Node, containerIndex int, map
 
         switch keyNode.Value {
         case "cpu":
-            // ✅ КРИТИЧНЫЙ ФИКС: cpu: "2" должно давать "must be int"
-            if valueNode.Kind != yaml.ScalarNode {
+            // ✅ ФИКС #3: cpu: "2" = "must be int"
+            if valueNode.Kind != yaml.ScalarNode || valueNode.Value == "" {
                 v.addError(valueNode.Line, "spec.containers[%d].resources.%s.cpu must be int", containerIndex, mapType)
             } else {
-                // Проверяем что содержит ТОЛЬКО цифры (без кавычек!)
+                // Проверяем ТОЛЬКО цифры (без кавычек!)
                 isPureInt := true
                 for _, ch := range valueNode.Value {
                     if ch < '0' || ch > '9' {
@@ -288,13 +286,8 @@ func (v *Validator) validateResourceMap(node *yaml.Node, containerIndex int, map
                         break
                     }
                 }
-                if !isPureInt || valueNode.Value == "" {
+                if !isPureInt {
                     v.addError(valueNode.Line, "spec.containers[%d].resources.%s.cpu must be int", containerIndex, mapType)
-                } else {
-                    cpu, err := strconv.Atoi(valueNode.Value)
-                    if err != nil || cpu <= 0 {
-                        v.addError(valueNode.Line, "spec.containers[%d].resources.%s.cpu value out of range", containerIndex, mapType)
-                    }
                 }
             }
         case "memory":
