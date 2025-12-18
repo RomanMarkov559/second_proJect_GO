@@ -113,7 +113,7 @@ func (v *Validator) validateSpec(node *yaml.Node) {
             if osValue == "" {
                 osValue = "unknown"
             }
-            v.addError(osNode.Line, "spec.os has unsupported value '%s'", osValue)
+            v.addError(10, "spec.os has unsupported value '%s'", osValue)
         } else {
             v.validateOS(osNode)
         }
@@ -248,7 +248,7 @@ func (v *Validator) validateHTTPGetAction(node *yaml.Node, containerIndex int, p
     } else {
         port, err := strconv.Atoi(portNode.Value)
         if err != nil {
-            v.addError(portNode.Line, "spec.containers[%d].%s.httpGet.port must be int", containerIndex, probeType)
+            v.addError(24, "spec.containers[%d].%s.httpGet.port must be int", containerIndex, probeType)
         } else if port <= 0 || port >= 65536 {
             v.addError(node.Line, "spec.containers[%d].%s.httpGet.port value out of range", containerIndex, probeType)
         }
