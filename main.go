@@ -94,9 +94,9 @@ func (v *Validator) validateTopLevel(node *yaml.Node) {
 func (v *Validator) validateMetadata(node *yaml.Node) {
 	nameNode := v.getField(node, "name")
 	if nameNode == nil {
-		v.addError(node.Line, "metadata.name is required")
+		v.addError(node.Line, "name is required")  // ИЗМЕНЕНИЕ: без "metadata."
 	} else if nameNode.Value == "" {
-		v.addError(nameNode.Line, "metadata.name is required")
+		v.addError(nameNode.Line, "name is required")  // ИЗМЕНЕНИЕ: без "metadata."
 	}
 }
 
@@ -207,7 +207,8 @@ func (v *Validator) validateContainerPort(node *yaml.Node, containerIndex, portI
 		if err != nil {
 			v.addError(portNode.Line, "spec.containers[%d].ports[%d].containerPort must be int", containerIndex, portIndex)
 		} else if port <= 0 || port >= 65536 {
-			v.addError(portNode.Line, "spec.containers[%d].ports[%d].containerPort value out of range", containerIndex, portIndex)
+			// ИЗМЕНЕНИЕ: простой формат "containerPort value out of range"
+			v.addError(portNode.Line, "containerPort value out of range")
 		}
 	}
 
@@ -245,7 +246,7 @@ func (v *Validator) validateHTTPGetAction(node *yaml.Node, containerIndex int, p
 		if err != nil {
 			v.addError(portNode.Line, "spec.containers[%d].%s.httpGet.port must be int", containerIndex, probeType)
 		} else if port <= 0 || port >= 65536 {
-			// ИСПРАВЛЕНИЕ: простой формат "port value out of range"
+			// ИЗМЕНЕНИЕ: простой формат "port value out of range"
 			v.addError(portNode.Line, "port value out of range")
 		}
 	}
@@ -280,21 +281,15 @@ func (v *Validator) validateResourceMap(node *yaml.Node, containerIndex int, map
 			if valueNode.Kind != yaml.ScalarNode {
 				v.addError(valueNode.Line, "spec.containers[%d].resources.%s.cpu must be int", containerIndex, mapType)
 			} else {
-				// ИСПРАВЛЕНИЕ: проверяем что значение состоит ТОЛЬКО из цифр
-				// "1" проходит, "1.5" нет, " 1 " нет
-				hasNonDigit := false
-				for _, ch := range valueNode.Value {
-					if ch < '0' || ch > '9' {
-						hasNonDigit = true
-						break
-					}
-				}
-				if hasNonDigit {
+				// Проверяем YAML tag
+				if valueNode.Tag != "!!int" {
 					v.addError(valueNode.Line, "spec.containers[%d].resources.%s.cpu must be int", containerIndex, mapType)
 				} else {
 					// Проверяем диапазон
-					cpu, _ := strconv.Atoi(valueNode.Value)
-					if cpu <= 0 {
+					cpu, err := strconv.Atoi(valueNode.Value)
+					if err != nil {
+						v.addError(valueNode.Line, "spec.containers[%d].resources.%s.cpu must be int", containerIndex, mapType)
+					} else if cpu <= 0 {
 						v.addError(valueNode.Line, "spec.containers[%d].resources.%s.cpu value out of range", containerIndex, mapType)
 					}
 				}
