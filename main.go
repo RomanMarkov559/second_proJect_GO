@@ -95,6 +95,8 @@ func (v *Validator) validateMetadata(node *yaml.Node) {
 	nameNode := v.getField(node, "name")
 	if nameNode == nil {
 		v.addError(node.Line, "metadata.name is required")
+	} else if nameNode.Value == "" {
+		v.addError(nameNode.Line, "metadata.name is required")
 	}
 	// namespace и labels не обязательны
 }
@@ -119,6 +121,8 @@ func (v *Validator) validateOS(node *yaml.Node) {
 	nameNode := v.getField(node, "name")
 	if nameNode == nil {
 		v.addError(node.Line, "spec.os.name is required")
+	} else if nameNode.Value == "" {
+		v.addError(nameNode.Line, "spec.os.name is required")
 	} else if nameNode.Value != "linux" && nameNode.Value != "windows" {
 		v.addError(nameNode.Line, "spec.os has unsupported value '%s'", nameNode.Value)
 	}
@@ -140,6 +144,8 @@ func (v *Validator) validateContainer(node *yaml.Node, index int) {
 	nameNode := v.getField(node, "name")
 	if nameNode == nil {
 		v.addError(node.Line, "spec.containers[%d].name is required", index)
+	} else if nameNode.Value == "" {
+		v.addError(nameNode.Line, "spec.containers[%d].name is required", index)
 	} else if !v.nameRegex.MatchString(nameNode.Value) {
 		v.addError(nameNode.Line, "spec.containers[%d].name has invalid format '%s'", index, nameNode.Value)
 	}
@@ -148,6 +154,8 @@ func (v *Validator) validateContainer(node *yaml.Node, index int) {
 	imageNode := v.getField(node, "image")
 	if imageNode == nil {
 		v.addError(node.Line, "spec.containers[%d].image is required", index)
+	} else if imageNode.Value == "" {
+		v.addError(imageNode.Line, "spec.containers[%d].image is required", index)
 	} else {
 		if !strings.HasPrefix(imageNode.Value, "registry.bigbrother.io/") {
 			v.addError(imageNode.Line, "spec.containers[%d].image has invalid format '%s'", index, imageNode.Value)
@@ -190,6 +198,8 @@ func (v *Validator) validateContainerPort(node *yaml.Node, containerIndex, portI
 	portNode := v.getField(node, "containerPort")
 	if portNode == nil {
 		v.addError(node.Line, "spec.containers[%d].ports[%d].containerPort is required", containerIndex, portIndex)
+	} else if portNode.Value == "" {
+		v.addError(portNode.Line, "spec.containers[%d].ports[%d].containerPort must be int", containerIndex, portIndex)
 	} else {
 		port, err := strconv.Atoi(portNode.Value)
 		if err != nil {
@@ -201,7 +211,7 @@ func (v *Validator) validateContainerPort(node *yaml.Node, containerIndex, portI
 
 	// Проверка protocol если есть
 	protocolNode := v.getField(node, "protocol")
-	if protocolNode != nil {
+	if protocolNode != nil && protocolNode.Value != "" {
 		if protocolNode.Value != "TCP" && protocolNode.Value != "UDP" {
 			v.addError(protocolNode.Line, "spec.containers[%d].ports[%d].protocol has unsupported value '%s'", containerIndex, portIndex, protocolNode.Value)
 		}
@@ -221,6 +231,8 @@ func (v *Validator) validateHTTPGetAction(node *yaml.Node, containerIndex int, p
 	pathNode := v.getField(node, "path")
 	if pathNode == nil {
 		v.addError(node.Line, "spec.containers[%d].%s.httpGet.path is required", containerIndex, probeType)
+	} else if pathNode.Value == "" {
+		v.addError(pathNode.Line, "spec.containers[%d].%s.httpGet.path is required", containerIndex, probeType)
 	} else if !strings.HasPrefix(pathNode.Value, "/") {
 		v.addError(pathNode.Line, "spec.containers[%d].%s.httpGet.path has invalid format '%s'", containerIndex, probeType, pathNode.Value)
 	}
@@ -228,6 +240,8 @@ func (v *Validator) validateHTTPGetAction(node *yaml.Node, containerIndex int, p
 	portNode := v.getField(node, "port")
 	if portNode == nil {
 		v.addError(node.Line, "spec.containers[%d].%s.httpGet.port is required", containerIndex, probeType)
+	} else if portNode.Value == "" {
+		v.addError(portNode.Line, "spec.containers[%d].%s.httpGet.port must be int", containerIndex, probeType)
 	} else {
 		port, err := strconv.Atoi(portNode.Value)
 		if err != nil {
@@ -266,17 +280,36 @@ func (v *Validator) validateResourceMap(node *yaml.Node, containerIndex int, map
 		case "cpu":
 			if valueNode.Kind != yaml.ScalarNode {
 				v.addError(valueNode.Line, "spec.containers[%d].resources.%s.cpu must be int", containerIndex, mapType)
+			} else if valueNode.Value == "" {
+				v.addError(valueNode.Line, "spec.containers[%d].resources.%s.cpu must be int", containerIndex, mapType)
 			} else {
-				cpu, err := strconv.Atoi(valueNode.Value)
+				// Проверяем, является ли значение числом
+				// Важно: строка "1" должна вызывать ошибку "must be int"
+				_, err := strconv.Atoi(valueNode.Value)
 				if err != nil {
 					v.addError(valueNode.Line, "spec.containers[%d].resources.%s.cpu must be int", containerIndex, mapType)
-				} else if cpu <= 0 {
-					v.addError(valueNode.Line, "spec.containers[%d].resources.%s.cpu value out of range", containerIndex, mapType)
+				} else {
+					// Если конвертируется, все равно проверяем, что это "чистое" число
+					// без лишних символов (как в случае строки в кавычках)
+					cpu, _ := strconv.Atoi(valueNode.Value)
+					if cpu <= 0 {
+						v.addError(valueNode.Line, "spec.containers[%d].resources.%s.cpu value out of range", containerIndex, mapType)
+					}
+					// Дополнительная проверка: если в значении есть нецифровые символы
+					// (кроме возможного минуса в начале)
+					for _, ch := range valueNode.Value {
+						if ch < '0' || ch > '9' {
+							v.addError(valueNode.Line, "spec.containers[%d].resources.%s.cpu must be int", containerIndex, mapType)
+							break
+						}
+					}
 				}
 			}
 		case "memory":
 			if valueNode.Kind != yaml.ScalarNode {
 				v.addError(valueNode.Line, "spec.containers[%d].resources.%s.memory must be string", containerIndex, mapType)
+			} else if valueNode.Value == "" {
+				v.addError(valueNode.Line, "spec.containers[%d].resources.%s.memory has invalid format '%s'", containerIndex, mapType, valueNode.Value)
 			} else if !v.memoryRegex.MatchString(valueNode.Value) {
 				v.addError(valueNode.Line, "spec.containers[%d].resources.%s.memory has invalid format '%s'", containerIndex, mapType, valueNode.Value)
 			}
