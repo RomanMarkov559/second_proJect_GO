@@ -278,22 +278,21 @@ func (v *Validator) validateResourceMap(node *yaml.Node, containerIndex int, map
 
 		switch keyNode.Value {
 		case "cpu":
-			if valueNode.Kind != yaml.ScalarNode {
-				v.addError(valueNode.Line, "spec.containers[%d].resources.%s.cpu must be int", containerIndex, mapType)
-			} else {
-				// Проверяем YAML tag
-				if valueNode.Tag != "!!int" {
-					v.addError(valueNode.Line, "spec.containers[%d].resources.%s.cpu must be int", containerIndex, mapType)
-				} else {
-					// Проверяем диапазон
-					cpu, err := strconv.Atoi(valueNode.Value)
-					if err != nil {
-						v.addError(valueNode.Line, "spec.containers[%d].resources.%s.cpu must be int", containerIndex, mapType)
-					} else if cpu <= 0 {
-						v.addError(valueNode.Line, "spec.containers[%d].resources.%s.cpu value out of range", containerIndex, mapType)
-					}
-				}
-			}
+    if valueNode.Kind != yaml.ScalarNode {
+        v.addError(valueNode.Line, "spec.containers[%d].resources.%s.cpu must be int", containerIndex, mapType)
+    } else if valueNode.Tag == "" || valueNode.Tag == "!!str" {
+        // Если tag пустой или это строка, выдаем ошибку
+        v.addError(valueNode.Line, "spec.containers[%d].resources.%s.cpu must be int", containerIndex, mapType)
+    } else if valueNode.Tag != "!!int" {
+        v.addError(valueNode.Line, "spec.containers[%d].resources.%s.cpu must be int", containerIndex, mapType)
+    } else {
+        cpu, err := strconv.Atoi(valueNode.Value)
+        if err != nil {
+            v.addError(valueNode.Line, "spec.containers[%d].resources.%s.cpu must be int", containerIndex, mapType)
+        } else if cpu <= 0 {
+            v.addError(valueNode.Line, "spec.containers[%d].resources.%s.cpu value out of range", containerIndex, mapType)
+        }
+    }
 		case "memory":
 			if valueNode.Kind != yaml.ScalarNode {
 				v.addError(valueNode.Line, "spec.containers[%d].resources.%s.memory must be string", containerIndex, mapType)
