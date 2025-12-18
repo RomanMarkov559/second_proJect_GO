@@ -105,17 +105,19 @@ func (v *Validator) validateMetadata(node *yaml.Node) {
 }
 
 func (v *Validator) validateSpec(node *yaml.Node) {
-    // ✅ ФИКС #1: Проверяем ЛЮБОЙ os!
     osNode := v.getField(node, "os")
     if osNode != nil {
         if osNode.Kind != yaml.MappingNode {
-            v.addError(osNode.Line+1, "spec.os has unsupported value '%s'", osNode.Value)
+            osValue := osNode.Value
+            if osValue == "" {
+                osValue = "unknown"
+            }
+            v.addError(osNode.Line, "spec.os has unsupported value '%s'", osValue)
         } else {
             v.validateOS(osNode)
         }
     }
 
-    // Проверяем обязательные containers
     containersNode := v.getField(node, "containers")
     if containersNode == nil {
         v.addError(node.Line, "spec.containers is required")
@@ -124,8 +126,8 @@ func (v *Validator) validateSpec(node *yaml.Node) {
     }
 }
 
+
 func (v *Validator) validateOS(node *yaml.Node) {
-    // ✅ ИСПРАВЛЕНО: убрана проверка Value == ""
     nameNode := v.getField(node, "name")
     if nameNode == nil {
         v.addError(node.Line, "spec.os.name is required")
