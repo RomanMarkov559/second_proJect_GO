@@ -34,12 +34,16 @@ func NewValidator(file string) *Validator {
 
 func (v *Validator) addError(line int, format string, args ...interface{}) {
     msg := fmt.Sprintf(format, args...)
+    if line < 0 {
+        line = 1  // Фикс: отрицательные строки → 1
+    }
     if line > 0 {
         v.errors = append(v.errors, fmt.Sprintf("%s:%d %s", v.file, line, msg))
     } else {
         v.errors = append(v.errors, fmt.Sprintf("%s %s", v.file, msg))
     }
 }
+
 
 func (v *Validator) PrintErrors() {
     for _, err := range v.errors {
